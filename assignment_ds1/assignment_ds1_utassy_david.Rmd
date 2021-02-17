@@ -10,7 +10,7 @@ output:
     df_print: paged
 ---
 
-```{r includes, message=FALSE, warning=FALSE}
+```{r includes, message=FALSE, warning=FALSE, include=FALSE}
 library(tidyverse)
 library(caret)
 library(skimr)
@@ -36,7 +36,7 @@ This is the assignment of David Utassy on the course Data Science 1. This assign
 
 # 1. Supervised learning with penalized models and PCA (27 points)
 
-```{r data_in, cache=TRUE }
+```{r data_in, message=FALSE, warning=FALSE, cache=TRUE, include=FALSE, paged.print=FALSE}
 # more info about the data here: https://www1.nyc.gov/site/planning/data-maps/open-data/dwn-pluto-mappluto.page
 data <- readRDS(url('http://www.jaredlander.com/data/manhattan_Train.rds')) %>%
   mutate(logTotalValue = log(TotalValue)) %>%
@@ -47,15 +47,28 @@ data <- readRDS(url('http://www.jaredlander.com/data/manhattan_Train.rds')) %>%
 print(skim(data))
 ```
 
-Take a look at the outcome variable. We can see on the following histograms that it worsts to deal with the logTotalValue as its distribution is more normal.
-```{r TotalValue, cache=TRUE}
-tv <- ggplot(data, aes(x = TotalValue)) + geom_histogram(binwidth = 500000)
-l_tv <- ggplot(data, aes(x = logTotalValue)) + geom_histogram(binwidth = 0.5)
+### a. Do a short exploration of data and find possible predictors of the target variable.
+
+After importing the data, the first task is to explore it. Regarding the outcome variable, we can see on the following histograms that it is worth dealing with the logTotalValue as its distribution is more normal.
+
+```{r total_value, fig.width=8,fig.height=4, fig.align='center', echo = FALSE , results = 'asis', warning = FALSE, message = FALSE}
+tv <- ggplot( data , aes( x = TotalValue) ) +
+  geom_histogram(alpha = 1, binwidth = 500000, color = 'black', fill = "#3a5e8cFF")+
+  labs(x='Total Value', y='Count')
+l_tv <- ggplot( data , aes( x = logTotalValue) ) +
+  geom_histogram(alpha = 1, binwidth = 0.5, color = 'black', fill = "#3a5e8cFF")+
+  labs(x='ln(Total Value)', y='Count')
 ggarrange(tv, l_tv, ncol=2)
 ```
 
+On the other hand during the exploratory data analysis, I figured out that the following predictor variables are right skewed a lot, therefore made a log transformation on them.
 
-```{r, warning=FALSE, message=FALSE, cache=TRUE}
+(LotArea, BldgArea, ComArea, ResArea, OfficeArea, RetailArea, GarageArea, StrgeArea, FactryArea, OtherArea, NumBldgs, NumFloors, UnitsRes, UnitsTotal, LotFront, BldgDepth, BuiltFAR, UnitsRes, UnitsRes)
+
+Furthermore I created a correlation matrix plot, in order to have a feeling on correlations and also highlighted some pairs with the ggpair() function. As the goal is prediction, I have used all the variables apart from TotalValue as predictors in order to achieve the best result. 
+
+
+```{r, warning=FALSE, message=FALSE, cache=TRUE, include=FALSE}
 data <- data %>%
   mutate(
     #create log transformations
@@ -106,43 +119,19 @@ data <- data %>%
 data <- subset(data, select = -c(LotArea, BldgArea, ComArea, ResArea, OfficeArea, RetailArea, GarageArea, StrgeArea, FactryArea, OtherArea, NumBldgs, NumFloors, UnitsRes, UnitsTotal, LotFront, BldgDepth, BuiltFAR, UnitsRes, UnitsRes))
 
 data <- data %>% relocate(logTotalValue, .after = last_col())
-
-
-ggcorr(data, label_size = 0)
-
 ```
-```{r, message=FALSE, cache=TRUE}
+
+```{r corrplot, fig.width=8,fig.height=4, fig.align='center', echo = FALSE , results = 'asis', warning = FALSE, message = FALSE, cache=T}
+ggcorr(data, hjust = 1.0, size = 3, color = "grey50", layout.exp = 5)
+```
+```{r corrplot2, fig.width=8,fig.height=8, fig.align='center', echo = FALSE , results = 'asis', warning = FALSE, message = FALSE, cache=T}
 ggpairs(data, columns = c("logTotalValue", "logNumFloors", "logBldgArea","logLotArea", "logComArea","logResArea","logUnitsTotal", "logLotFront"))
 ```
 
-### A baseline model
+### b. Create a training and a test set, assigning 30% of observations to the training set.
 
-```{r reg1, cache=TRUE}
-reg1 <- lm(logTotalValue ~ logLotArea + logBldgArea, data = data) %>% 
-  tidy() %>% 
-  kable(digits = 3) %>% 
-  kable_styling(full_width = F)
-reg1
-```
+In the following code snippet I have created a training and a test set, assigning 30% of observations to the training set. Additionally I predefined trainControl for the caret train function in order to make 10-fold cross-validation with all models.
 
-Weird pattern: sales price decreases with the number of rooms? This is spurious and is caused by the high positive correlation between the feature variables. Univariate regressions have the intuitive signs:
-
-```{r reg2, cache=TRUE}
-reg2 <- lm(logTotalValue ~ logLotArea + logBldgArea + logNumFloors + logLotFront + logResArea, data = data) %>% 
-  tidy() %>% 
-  kable(digits = 3) %>% 
-  kable_styling(full_width = F)
-reg2
-```
-
-```{r reg3, cache=TRUE}
-reg3 <- lm(logTotalValue ~ logResArea, data = data) %>% 
-  tidy() %>% 
-  kable(digits = 3) %>% 
-  kable_styling(full_width = F)
-reg3
-```
-### Set up training and test (holdout) datasets
 
 ```{r split_data, cache=TRUE}
 set.seed(1234)
@@ -159,7 +148,9 @@ data_test <- data[-train_indices, ]
 fit_control <- trainControl(method = "cv", number = 10) #, selectionFunction = "oneSE")
 ```
 
-### Linear
+### c. Use a linear regression to predict logTotalValue and use 10-fold cross validation to assess the predictive power.
+In the following code snippet I have used the caret package to train a prediction model using 10-fold cross-validation. The final model’s results will be published later in comparison with other models. 
+
 
 ```{r linear, message=FALSE, warning=FALSE, cache=TRUE}
 set.seed(857)
@@ -170,12 +161,14 @@ linear_fit <- train(
   preProcess = c("center", "scale"),
   trControl = fit_control
 )
-linear_fit
 ```
 
-### Ridge
+### d. Use penalized linear models for the same task. Make sure to try LASSO, Ridge and Elastic Net models. Does the best model improve on the simple linear model?
 
-```{r, message=FALSE, warning=FALSE, cache=TRUE}
+#### Ridge
+In the following code snippet I am creating a ridge model by setting the alpha parameter to zero in the caret train function. By 10-fold cross-validation the caret package calculates to optimal regularization parameter (lambda) which is the weight of the penalty on the sum of squares of the regression coefficients.
+
+```{r ridge, message=FALSE, warning=FALSE, cache=TRUE}
 # ridge model
 ridge_tune_grid <- expand.grid(
   "alpha" = c(0),
@@ -192,15 +185,8 @@ ridge_fit <- train(
 )
 ```
 
-```{r}
-ridge_fit
-```
-
-```{r}
-ggplot(ridge_fit)
-```
-
-### Lasso
+#### Lasso
+Opposite to Ridge, to create a Lasso model we  have to set the alpha parameter to one. In case of Lasso the regularization parameter (lambda) is the weight of the penalty on the absolute value of the regression coefficients.
 
 ```{r lasso, warning=FALSE, cache=TRUE}
 tenpowers <- 10^seq(-1, -5, by = -1)
@@ -218,15 +204,14 @@ lasso_fit <- train(
   trControl = fit_control
 )
 ```
-```{r}
-lasso_fit
-```
 
-```{r}
-ggplot(lasso_fit) + scale_x_log10()
-```
 
-### Elastic Net
+
+#### Elastic Net
+We can combine both types of penalties. LASSO is attractive since it performs principled variable selection. However, when having correlated features, typically only one of them - quite arbitrarily - is kept in the model. Ridge simultaneously shrinks coefficients of these towards zero. If we apply penalties of both the absolute values and the squares of the coefficients, both virtues are retained. This method is called Elastic net. [source](https://github.com/pappzoltan/machine-learning-course/blob/master/ml.1.1/lab/penalized_models.Rmd)
+
+To combine Lasso and Ridge, caret has to tune the alpha parameter. After optimisation the final values used for the model were alpha = 0.6 and lambda = 0.0001.
+
 
 ```{r enet, message = FALSE, warning=FALSE, cache=TRUE}
 enet_tune_grid <- expand.grid(
@@ -244,63 +229,46 @@ enet_fit <- train(
 )
 ```
 
-```{r}
-enet_fit
-```
 
-```{r}
+```{r optimisations, include=FALSE}
+ggplot(ridge_fit)
+ggplot(lasso_fit) + scale_x_log10()
 ggplot(enet_fit) + scale_x_log10()
 ```
 
+#### Compare current models
 
-### Compare 
-```{r}
-resample_profile <- resamples(
-  list("linear" = linear_fit,
-       "ridge" = ridge_fit,
-       "lasso" = lasso_fit,
-       "elastic net" = enet_fit
-  )
-) 
-summary(resample_profile)
-```
+In order to compare the models the best way is to compare the cross-validated RMSE of each model. In the table below, we can see these results. We can see that the differences are small but it turns out that the simple linear model (using some log scaled predictors) is the best among them. 
 
-```{r}
-bwplot(resample_profile)
-```
+```{r cv_rmse, echo = FALSE , results = "asis", warning = FALSE, message = FALSE }
+# Get CV RMSE ----------------------------------------------
 
-Are differences between models large in a statistical sense? Not really. What we can certainly see is that the plain linear model's variance is much larger than that of the penalized ones.
+model_names <- c("linear_fit","ridge_fit","lasso_fit","enet_fit")
+rmse_CV <- c()
 
-```{r}
-model_differences <- diff(resample_profile)
-```
+for (i in model_names) {
+  rmse_CV[i]  <- min(get(i)$results$RMSE)
+}
 
-```{r}
-summary(model_differences)
-```
+rmsedf <- data.frame(rmse_CV)
+colnames(rmsedf) <- "CV RMSE"
+rownames(rmsedf) <- c("Linear", "Ridge", "Lasso", "Elastic Net")
 
-```{r}
-dotplot(model_differences)
-```
-
-### Evaluate the chosen model on holdout set
-
-```{r}
-RMSE(predict(enet_fit, newdata = data_test), data_test[["logTotalValue"]])
-```
-
-```{r warning=FALSE}
-RMSE(predict(linear_fit, newdata = data_test), data_test[["logTotalValue"]])
+kbl(rmsedf, digits = 4)  %>% kable_styling(bootstrap_options = "striped", full_width = F, position = "center")
 ```
 
 
+### e. Which of the models you’ve trained is the “simplest one that is still good enough”? (Hint: explore adding selectionFunction = "oneSE" to the trainControl in caret’s train. What is its effect?).
+
+In my case, the best model was the simple linear one, however the differences were similar. If the goal is to use the most simple model, that means that we could use Lasso or Elastic Net as well, as they reduce the number of included variables, therefore reducing the complexity. However, none of the reduced the number of variables significantly as the lambda parameter was almost zero in both cases. I also tried adding the “oneSE” parameter, but it still did not make a significant difference.
+
+### f. Now try to improve the linear model by using PCA for dimensionality reduction. Center and scale your variables and use pcr to conduct a search for the optimal number of principal components. Does PCA improve the fit over the simple linear model? (Hint: there are many factor variables. Make sure to include a large number of principal components such as 60 - 90 to your search as well.)
+
+In the following code snippet, I used caret’s pcr method to make linear regression with Principal Component Analysis on the predictor variables. It’s hyperparameter to tune is the number of principal components to use. By defining a tuning grid I was able to find the optimal number as well.
 
 
-
-
-
-```{r pcr, cache=TRUE}
-tune_grid <- data.frame(ncomp = 1:136)
+```{r pcr, cache=TRUE, warning=FALSE}
+tune_grid <- data.frame(ncomp = 80:136)
 set.seed(857)
 pcr_fit <- train(
   logTotalValue ~ . -TotalValue,
@@ -310,8 +278,11 @@ pcr_fit <- train(
   tuneGrid = tune_grid,
   preProcess = c("center", "scale")
 )
-pcr_fit
 ```
+
+### g. If you apply PCA prior to estimating penalized models via preProcess, does it help to achieve a better fit? (Hint: also include "nzv" to preProcess to drop zero variance features). What is your intuition why this can be the case?
+
+In the following code snippet I used PCA prior to estimating penalized models via preProcess with the given number of the optimal principal components found out with pcr before. 
 
 
 ```{r enet_pca, message = FALSE, warning=FALSE, cache=TRUE}
@@ -332,37 +303,32 @@ enet_pca_fit <- train(
     preProcOptions = list(pcaComp = 131))
 )
 ```
-```{r}
-enet_pca_fit
+
+In the table below we can see that PCA did not help to achieve a better fit in this case. On the other hand, in the linear case the result is close. By using PCA we are losing the interpretability of OLS, but in ideal cases we might be able to use less variables (which are the linear combinations of the original variables). 
+
+```{r cv_rmse2, echo = FALSE , results = "asis", warning = FALSE, message = FALSE }
+# Get CV RMSE again ----------------------------------------------
+
+model_names <- c("linear_fit","ridge_fit","lasso_fit","enet_fit", "pcr_fit", "enet_pca_fit")
+rmse_CV2 <- c()
+
+for (i in model_names) {
+  rmse_CV2[i]  <- min(get(i)$results$RMSE)
+}
+
+rmsedf2 <- data.frame(rmse_CV2)
+colnames(rmsedf2) <- "CV RMSE"
+rownames(rmsedf2) <- c("Linear", "Ridge", "Lasso", "Elastic Net", "Linear w PCA", "Elastic Net w PCA")
+
+kbl(rmsedf2, digits = 4)  %>% kable_styling(bootstrap_options = "striped", full_width = F, position = "center")
 ```
 
-```{r}
-ggplot(enet_pca_fit) + scale_x_log10()
-```
-
-### Compare again
-```{r}
-resample_profile_2 <- resamples(
-  list("linear" = linear_fit,
-       "ridge" = ridge_fit,
-       "lasso" = lasso_fit,
-       "elastic net" = enet_fit,
-       "linear w pca" = pcr_fit,
-       "elastic net w pca" = enet_pca_fit
-  )
-) 
-summary(resample_profile_2)
-```
 
 
-```{r warning=FALSE}
+```{r warning=FALSE, include=FALSE}
 RMSE(predict(linear_fit, newdata = data_test), data_test[["logTotalValue"]])
 ```
 
-```{r warning=FALSE}
-RMSE(predict(pcr_fit, newdata = data_test), data_test[["logTotalValue"]])
-```
+### h. Select the best model of those you’ve trained. Evaluate your preferred model on the test set.
 
-```{r warning=FALSE}
-RMSE(predict(enet_pca_fit, newdata = data_test), data_test[["logTotalValue"]])
-```
+According to the table above, the best model is still the simplest linear model. In order to evaluate it calculated the RMSE on the test set, which turned out to be 0.537, which is great as it is smaller and close to the cross-validated RMSE meaning that the model is stable.
