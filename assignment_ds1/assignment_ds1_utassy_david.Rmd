@@ -1,0 +1,368 @@
+---
+title: "Data Science 1"
+subtitle: "Assignment"
+author: "David Utassy"
+date: '2021-02-17'
+output:
+  html_document:
+    df_print: paged
+  html_notebook:
+    df_print: paged
+---
+
+```{r includes, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(caret)
+library(skimr)
+library(janitor)
+
+library(factoextra) # provides nice functions for visualizing the output of PCA
+library(NbClust) # for choosing the optimal number of clusters
+
+library(knitr)
+library(kableExtra)
+
+library(datasets)
+library(MASS)
+library(ISLR)
+library(ggpubr)
+library(GGally)
+library(broom)
+
+theme_set(theme_minimal())
+```
+
+This is the assignment of David Utassy on the course Data Science 1. This assignment was developed in [this GitHub repository](https://github.com/utassydv/data_science/assignment_ds1_utassy_david)
+
+# 1. Supervised learning with penalized models and PCA (27 points)
+
+```{r data_in, cache=TRUE }
+# more info about the data here: https://www1.nyc.gov/site/planning/data-maps/open-data/dwn-pluto-mappluto.page
+data <- readRDS(url('http://www.jaredlander.com/data/manhattan_Train.rds')) %>%
+  mutate(logTotalValue = log(TotalValue)) %>%
+  drop_na()
+```
+
+```{r skim, include=FALSE, cache=TRUE }
+print(skim(data))
+```
+
+Take a look at the outcome variable. We can see on the following histograms that it worsts to deal with the logTotalValue as its distribution is more normal.
+```{r TotalValue, cache=TRUE}
+tv <- ggplot(data, aes(x = TotalValue)) + geom_histogram(binwidth = 500000)
+l_tv <- ggplot(data, aes(x = logTotalValue)) + geom_histogram(binwidth = 0.5)
+ggarrange(tv, l_tv, ncol=2)
+```
+
+
+```{r, warning=FALSE, message=FALSE, cache=TRUE}
+data <- data %>%
+  mutate(
+    #create log transformations
+    logLotArea = ifelse(LotArea == 0 , 0, log(LotArea)), 
+    logBldgArea = ifelse(BldgArea == 0 , 0, log(BldgArea)), 
+    logComArea = ifelse(ComArea == 0 , 0, log(ComArea)), 
+    logResArea = ifelse(ResArea == 0 , 0, log(ResArea)), 
+    logOfficeArea = ifelse(OfficeArea == 0 , 0, log(OfficeArea)), 
+    logRetailArea = ifelse(RetailArea == 0 , 0, log(RetailArea)), 
+    logGarageArea = ifelse(GarageArea == 0 , 0, log(GarageArea)), 
+    logStrgeArea = ifelse(StrgeArea == 0 , 0, log(StrgeArea)),
+    logFactryArea = ifelse(FactryArea == 0 , 0, log(FactryArea)), 
+    logOtherArea = ifelse(OtherArea == 0 , 0, log(OtherArea)),
+    logNumBldgs = ifelse(NumBldgs == 0 , 0, log(NumBldgs)),
+    logNumFloors = ifelse(NumFloors == 0 , 0, log(NumFloors)),
+    logUnitsRes = ifelse(UnitsRes == 0 , 0, log(UnitsRes)),
+    logUnitsTotal = ifelse(UnitsTotal == 0 , 0, log(UnitsTotal)),
+    logLotFront = ifelse(LotFront == 0 , 0, log(LotFront)),
+    logBldgDepth = ifelse(BldgDepth == 0 , 0, log(BldgDepth)),
+    logBuiltFAR = ifelse(BuiltFAR == 0 , 0, log(BuiltFAR)),
+    logUnitsRes = ifelse(UnitsRes == 0 , 0, log(UnitsRes)),
+    logUnitsRes = ifelse(UnitsRes == 0 , 0, log(UnitsRes)),
+   
+    # indicate with a flag is log value is replaced with 0 in case of -Inf 
+    flag_logLotArea = factor(ifelse(LotArea == 0 , 1, 0)),
+    flag_logBldgArea = factor(ifelse(BldgArea == 0 , 1, 0)),
+    flag_logComArea = factor(ifelse(ComArea == 0 , 1, 0)),
+    flag_logResArea = factor(ifelse(ResArea == 0 , 1, 0)),
+    flag_logOfficeArea = factor(ifelse(OfficeArea == 0 , 1, 0)),
+    flag_logRetailArea = factor(ifelse(RetailArea == 0 , 1, 0)),
+    flag_logGarageArea = factor(ifelse(GarageArea == 0 , 1, 0)),
+    flag_logStrgeArea = factor(ifelse(StrgeArea == 0 , 1, 0)),
+    flag_logFactryArea = factor(ifelse(FactryArea == 0 , 1, 0)),
+    flag_logOtherArea = factor(ifelse(OtherArea == 0 , 1, 0)),
+    flag_logNumBldgs = factor(ifelse(NumBldgs == 0 , 1, 0)),
+    flag_logNumFloors = factor(ifelse(NumFloors == 0 , 1, 0)),
+    flag_logUnitsRes = factor(ifelse(UnitsRes == 0 , 1, 0)),
+    flag_logUnitsTotal = factor(ifelse(UnitsTotal == 0 , 1, 0)),
+    flag_logLotFront = factor(ifelse(LotFront == 0 , 1, 0)),
+    flag_logBldgDepth = factor(ifelse(BldgDepth == 0 , 1, 0)),
+    flag_logBuiltFAR = factor(ifelse(BuiltFAR == 0 , 1, 0)),
+    flag_logUnitsRes = factor(ifelse(UnitsRes == 0 , 1, 0)),
+    flag_logUnitsRes = factor(ifelse(UnitsRes == 0 , 1, 0)),
+  )
+
+  
+
+data <- subset(data, select = -c(LotArea, BldgArea, ComArea, ResArea, OfficeArea, RetailArea, GarageArea, StrgeArea, FactryArea, OtherArea, NumBldgs, NumFloors, UnitsRes, UnitsTotal, LotFront, BldgDepth, BuiltFAR, UnitsRes, UnitsRes))
+
+data <- data %>% relocate(logTotalValue, .after = last_col())
+
+
+ggcorr(data, label_size = 0)
+
+```
+```{r, message=FALSE, cache=TRUE}
+ggpairs(data, columns = c("logTotalValue", "logNumFloors", "logBldgArea","logLotArea", "logComArea","logResArea","logUnitsTotal", "logLotFront"))
+```
+
+### A baseline model
+
+```{r reg1, cache=TRUE}
+reg1 <- lm(logTotalValue ~ logLotArea + logBldgArea, data = data) %>% 
+  tidy() %>% 
+  kable(digits = 3) %>% 
+  kable_styling(full_width = F)
+reg1
+```
+
+Weird pattern: sales price decreases with the number of rooms? This is spurious and is caused by the high positive correlation between the feature variables. Univariate regressions have the intuitive signs:
+
+```{r reg2, cache=TRUE}
+reg2 <- lm(logTotalValue ~ logLotArea + logBldgArea + logNumFloors + logLotFront + logResArea, data = data) %>% 
+  tidy() %>% 
+  kable(digits = 3) %>% 
+  kable_styling(full_width = F)
+reg2
+```
+
+```{r reg3, cache=TRUE}
+reg3 <- lm(logTotalValue ~ logResArea, data = data) %>% 
+  tidy() %>% 
+  kable(digits = 3) %>% 
+  kable_styling(full_width = F)
+reg3
+```
+### Set up training and test (holdout) datasets
+
+```{r split_data, cache=TRUE}
+set.seed(1234)
+training_ratio <- 0.7
+train_indices <- createDataPartition(
+  y = data[["logTotalValue"]],
+  times = 1,
+  p = training_ratio,
+  list = FALSE
+) %>% as.vector()
+data_train <- data[train_indices, ]
+data_test <- data[-train_indices, ]
+
+fit_control <- trainControl(method = "cv", number = 10) #, selectionFunction = "oneSE")
+```
+
+### Linear
+
+```{r linear, message=FALSE, warning=FALSE, cache=TRUE}
+set.seed(857)
+linear_fit <- train(
+  logTotalValue ~ . -TotalValue,
+  data = data_train,
+  method = "lm",
+  preProcess = c("center", "scale"),
+  trControl = fit_control
+)
+linear_fit
+```
+
+### Ridge
+
+```{r, message=FALSE, warning=FALSE, cache=TRUE}
+# ridge model
+ridge_tune_grid <- expand.grid(
+  "alpha" = c(0),
+  "lambda" = seq(0.025, 0.5, by = 0.025)
+)
+set.seed(857)
+ridge_fit <- train(
+  logTotalValue ~ . -TotalValue,
+  data = data_train,
+  method = "glmnet",
+  preProcess = c("center", "scale"),
+  tuneGrid = ridge_tune_grid,
+  trControl = fit_control
+)
+```
+
+```{r}
+ridge_fit
+```
+
+```{r}
+ggplot(ridge_fit)
+```
+
+### Lasso
+
+```{r lasso, warning=FALSE, cache=TRUE}
+tenpowers <- 10^seq(-1, -5, by = -1)
+lasso_tune_grid <- expand.grid(
+  "alpha" = c(1),
+  "lambda" = c(tenpowers, tenpowers / 2) 
+)
+set.seed(857)
+lasso_fit <- train(
+  logTotalValue ~ . -TotalValue,
+  data = data_train,
+  method = "glmnet",
+  preProcess = c("center", "scale"),
+  tuneGrid = lasso_tune_grid,
+  trControl = fit_control
+)
+```
+```{r}
+lasso_fit
+```
+
+```{r}
+ggplot(lasso_fit) + scale_x_log10()
+```
+
+### Elastic Net
+
+```{r enet, message = FALSE, warning=FALSE, cache=TRUE}
+enet_tune_grid <- expand.grid(
+  "alpha" = seq(0, 1, by = 0.1),
+  "lambda" = union(lasso_tune_grid[["lambda"]], ridge_tune_grid[["lambda"]])
+)
+set.seed(857)
+enet_fit <- train(
+  logTotalValue ~ . -TotalValue,
+  data = data_train,
+  method = "glmnet",
+  preProcess = c("center", "scale"),
+  tuneGrid = enet_tune_grid,
+  trControl = fit_control
+)
+```
+
+```{r}
+enet_fit
+```
+
+```{r}
+ggplot(enet_fit) + scale_x_log10()
+```
+
+
+### Compare 
+```{r}
+resample_profile <- resamples(
+  list("linear" = linear_fit,
+       "ridge" = ridge_fit,
+       "lasso" = lasso_fit,
+       "elastic net" = enet_fit
+  )
+) 
+summary(resample_profile)
+```
+
+```{r}
+bwplot(resample_profile)
+```
+
+Are differences between models large in a statistical sense? Not really. What we can certainly see is that the plain linear model's variance is much larger than that of the penalized ones.
+
+```{r}
+model_differences <- diff(resample_profile)
+```
+
+```{r}
+summary(model_differences)
+```
+
+```{r}
+dotplot(model_differences)
+```
+
+### Evaluate the chosen model on holdout set
+
+```{r}
+RMSE(predict(enet_fit, newdata = data_test), data_test[["logTotalValue"]])
+```
+
+```{r warning=FALSE}
+RMSE(predict(linear_fit, newdata = data_test), data_test[["logTotalValue"]])
+```
+
+
+
+
+
+
+
+```{r pcr, cache=TRUE}
+tune_grid <- data.frame(ncomp = 1:136)
+set.seed(857)
+pcr_fit <- train(
+  logTotalValue ~ . -TotalValue,
+  data = data_train,
+  method = "pcr",
+  trControl = fit_control,
+  tuneGrid = tune_grid,
+  preProcess = c("center", "scale")
+)
+pcr_fit
+```
+
+
+```{r enet_pca, message = FALSE, warning=FALSE, cache=TRUE}
+enet_tune_grid <- expand.grid(
+  "alpha" = seq(0, 1, by = 0.1),
+  "lambda" = union(lasso_tune_grid[["lambda"]], ridge_tune_grid[["lambda"]])
+)
+set.seed(857)
+enet_pca_fit <- train(
+  logTotalValue ~ . -TotalValue,
+  data = data_train,
+  method = "glmnet",
+  preProcess = c("center", "scale","pca","nzv"),
+  tuneGrid = enet_tune_grid,
+  trControl = trainControl(
+    method = "cv",
+    number = 10,
+    preProcOptions = list(pcaComp = 131))
+)
+```
+```{r}
+enet_pca_fit
+```
+
+```{r}
+ggplot(enet_pca_fit) + scale_x_log10()
+```
+
+### Compare again
+```{r}
+resample_profile_2 <- resamples(
+  list("linear" = linear_fit,
+       "ridge" = ridge_fit,
+       "lasso" = lasso_fit,
+       "elastic net" = enet_fit,
+       "linear w pca" = pcr_fit,
+       "elastic net w pca" = enet_pca_fit
+  )
+) 
+summary(resample_profile_2)
+```
+
+
+```{r warning=FALSE}
+RMSE(predict(linear_fit, newdata = data_test), data_test[["logTotalValue"]])
+```
+
+```{r warning=FALSE}
+RMSE(predict(pcr_fit, newdata = data_test), data_test[["logTotalValue"]])
+```
+
+```{r warning=FALSE}
+RMSE(predict(enet_pca_fit, newdata = data_test), data_test[["logTotalValue"]])
+```
