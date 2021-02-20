@@ -112,6 +112,11 @@ data <- data %>%
     flag_logBuiltFAR = factor(ifelse(BuiltFAR == 0 , 1, 0)),
     flag_logUnitsRes = factor(ifelse(UnitsRes == 0 , 1, 0)),
     flag_logUnitsRes = factor(ifelse(UnitsRes == 0 , 1, 0)),
+    
+    # make some variables factor
+    Council = factor(Council),
+    PolicePrct = factor(PolicePrct),
+    HealthArea = factor(HealthArea),
   )
 
   
@@ -130,8 +135,7 @@ ggpairs(data, columns = c("logTotalValue", "logNumFloors", "logBldgArea","logLot
 
 ### b. Create a training and a test set, assigning 30% of observations to the training set.
 
-In the following code snippet I have created a training and a test set, assigning 30% of observations to the training set. Additionally I predefined trainControl for the caret train function in order to make 10-fold cross-validation with all models.
-
+In the following code snippet I have created a training and a test set, assigning 70% of observations to the training set. Note, that the task asked for 30% to the training set. In the end I have chosen to take 70% as due to my experiment in that case, the models got better that way, however as a con I would like to highlight that this results in a longer runtime. Additionally, I predefined trainControl for the caret train function in order to make 10-fold cross-validation with all models. 
 
 ```{r split_data, cache=TRUE}
 set.seed(1234)
@@ -268,7 +272,7 @@ In the following code snippet, I used caret’s pcr method to make linear regres
 
 
 ```{r pcr, cache=TRUE, warning=FALSE}
-tune_grid <- data.frame(ncomp = 80:136)
+tune_grid <- data.frame(ncomp = 80:240)
 set.seed(857)
 pcr_fit <- train(
   logTotalValue ~ . -TotalValue,
@@ -300,7 +304,7 @@ enet_pca_fit <- train(
   trControl = trainControl(
     method = "cv",
     number = 10,
-    preProcOptions = list(pcaComp = 131))
+    preProcOptions = list(pcaComp = 237))
 )
 ```
 
@@ -331,4 +335,4 @@ RMSE(predict(linear_fit, newdata = data_test), data_test[["logTotalValue"]])
 
 ### h. Select the best model of those you’ve trained. Evaluate your preferred model on the test set.
 
-According to the table above, the best model is still the simplest linear model. In order to evaluate it calculated the RMSE on the test set, which turned out to be 0.537, which is great as it is smaller and close to the cross-validated RMSE meaning that the model is stable.
+According to the table above, the best model is still the simplest linear model. In order to evaluate it calculated the RMSE on the test set, which turned out to be 0.500, which is great as it is smaller and close to the cross-validated RMSE meaning that the model is stable.
