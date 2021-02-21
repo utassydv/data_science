@@ -244,7 +244,7 @@ ggplot(enet_fit) + scale_x_log10()
 
 In order to compare the models the best way is to compare the cross-validated RMSE of each model. In the table below, we can see these results. We can see that the differences are small but it turns out that the simple linear model (using some log scaled predictors) is the best among them. 
 
-```{r cv_rmse, echo = FALSE , results = "asis", warning = FALSE, message = FALSE }
+```{r cv_rmse, echo = FALSE , results = "asis", warning = FALSE, message = FALSE, cache=T }
 # Get CV RMSE ----------------------------------------------
 
 model_names <- c("linear_fit","ridge_fit","lasso_fit","enet_fit")
@@ -310,7 +310,7 @@ enet_pca_fit <- train(
 
 In the table below we can see that PCA did not help to achieve a better fit in this case. On the other hand, in the linear case the result is close. By using PCA we are losing the interpretability of OLS, but in ideal cases we might be able to use less variables (which are the linear combinations of the original variables). 
 
-```{r cv_rmse2, echo = FALSE , results = "asis", warning = FALSE, message = FALSE }
+```{r cv_rmse2, echo = FALSE , results = "asis", warning = FALSE, message = FALSE, cache=T }
 # Get CV RMSE again ----------------------------------------------
 
 model_names <- c("linear_fit","ridge_fit","lasso_fit","enet_fit", "pcr_fit", "enet_pca_fit")
@@ -336,3 +336,121 @@ RMSE(predict(linear_fit, newdata = data_test), data_test[["logTotalValue"]])
 ### h. Select the best model of those you’ve trained. Evaluate your preferred model on the test set.
 
 According to the table above, the best model is still the simplest linear model. In order to evaluate it calculated the RMSE on the test set, which turned out to be 0.500, which is great as it is smaller and close to the cross-validated RMSE meaning that the model is stable.
+
+# 2. Clustering on the USArrests dataset (18 points)
+
+In this problem use the USArrests dataset we used in class. Your task is to apply clustering then make sense of the clusters using the principal components.
+
+### a. Think about any data pre-processing steps you may/should want to do before applying clustering methods. Are there any?
+
+The dataset I am using is the USArrest dataset. On the [official RDoccumentations site](https://www.rdocumentation.org/packages/datasets/versions/3.6.2/topics/USArrests) the description is the following: “This data set contains statistics, in arrests per 100,000 residents for assault, murder, and rape in each of the 50 US states in 1973. Also given is the percent of the population living in urban areas.”
+
+Therefore my variables are:
+
+Murder: Murder arrest (per 100,000)
+Assault: Assault arrest (per 100,000)
+Rape: Rape arrest (per 100,000)
+UrbanPop: The percent of the population living in urban areas
+
+After looking at the distribution of the variables I decided to not make any transformations on them as only Rape was slightly right skewed and the others had kind of normal distribution. That way I am able to stick with a more handy interpretation in the future as all of my variables are in a similar form. Also, I would like to highlight that all the variables are in per 100,000 or percentage, therefore I do not need to add any absolute population variable. 
+
+On the following plot it is easy the see the main properties of the variables.
+
+
+```{r data_in2, message=FALSE, warning=FALSE, cache=TRUE, include=FALSE, paged.print=FALSE}
+# getting the data
+data <- USArrests
+data <- clean_names(data)
+
+print(skim(data))
+```
+
+
+
+```{r corrplot22, fig.width=4,fig.height=4, fig.align='center', echo = FALSE , results = 'asis', warning = FALSE, message = FALSE, cache=T}
+ggpairs(data, columns = c("murder", "assault", "urban_pop","rape"))
+```
+
+### b. Determine the optimal number of clusters as indicated by NbClust heuristics.
+
+First of all a used the following code snippet, to visualize the evolution of the within-sum-of-squares. This way it is easy to identify a so called “elbow point” which could be the optimal number of clusters. (In this case it is two or three)
+
+```{r elbow, fig.width=4,fig.height=4, fig.align='center', echo = FALSE , results = 'asis', warning = FALSE, message = FALSE, cache=T}
+fviz_nbclust(data, kmeans, method = "wss")
+```
+
+
+
+```{r, results="hide", include=FALSE, cache=TRUE}
+nb <- NbClust(data, method = "kmeans", min.nc = 2, max.nc = 10, index = "all")
+```
+
+Next I used NbClust heuristics which is using several indices in order to suggest an optimal number of clusters. In this case among all indices 9 proposed 2, and 5 proposed 3 as the best number of clusters.
+
+
+```{r plot_func, include=FALSE}
+plot_clusters_with_centers <- function(features, kmeans_object) {
+  data_w_clusters <- mutate(features, cluster = factor(kmeans_object$cluster))
+  centers <- as_tibble(kmeans_object$centers) %>%
+    mutate(cluster = factor(seq(nrow(km$centers))), center = TRUE)
+  data_w_clusters_centers <- bind_rows(data_w_clusters, centers)
+  ggplot(data_w_clusters_centers, aes(
+    x = urban_pop, y = assault,
+    color = cluster, size = ifelse(!is.na(center), 2, 1))
+  ) +
+    geom_point() +
+    scale_size(guide = 'none')
+}
+```
+
+### c. Use the k-means method to cluster states using the number of clusters found in a) and anything else that you think that makes sense. Plot observations colored by clusters in the space of urban population and another (crime-related) variable. (See example code from class, use factor(km$cluster) to create a vector of class labels).
+
+In the following code snippet I am using the kmeans function to do kmeans clustering with 2 clusters and getting the class labels. I am setting the nstarts parameter to 5 in order to get the best model out of 5 attempt. This is needed as kmeans clustering is not deterministic, therefore it can end up in strange outcomes.  
+
+
+```{r kmeans, include=TRUE}
+set.seed(1122)
+km <- kmeans(data, centers = 2, nstart = 5)
+
+clusters <- factor(km$cluster)
+```
+
+Next I am plotting the observations colored by clusters in the space of urban population and assaults. 
+
+```{r cluster1, fig.width=4,fig.height=4, fig.align='center', echo = FALSE , results = 'asis', warning = FALSE, message = FALSE, cache=T}
+plot_clusters_with_centers(data, km)
+```
+
+### d. Perform PCA and get the first two principal component coordinates for all observations. Plot clusters of your choice from the previous points in the coordinate system defined by the first two principal components. How do clusters relate to these?
+
+In the following code snippet i am performing PCA on the original variables and I am getting the firsth three principal components as I would like to experiment with a 3D plotting as well. 
+
+
+```{r, results="hide"}
+pca_result <- prcomp(data, scale = TRUE)
+first_three_pc <- as_tibble(pca_result$x[, 1:3])
+```
+
+As the exercise as for it the following plot uses the first two principal components and shows the clusters on the plain defined by PC1 and PC2. We can observe that the clusters are separated along PC1 similarly like the previous plot when we had the separation along the assault axis. On the other hand we still have a broad variance in each cluster among the PCA axis. 
+
+```{r pca_plot1, fig.width=4,fig.height=4, fig.align='center', echo = FALSE , results = 'asis', warning = FALSE, message = FALSE, cache=T}
+ggplot(first_three_pc, aes(x = PC1, y = PC2, color = clusters)) +
+  geom_point()
+```
+
+
+In the end, I was curious about the 3D case using the first three PCs. In the following 3D interactive plot we can see that both three variables has great variance in the whole data, meaning they contain great amount of information. 
+
+
+```{r pca_plot2, fig.width=8,fig.height=8, fig.align='center', echo = FALSE , results = 'asis', warning = FALSE, message = FALSE, cache=T}
+library(plotly)
+p <- plot_ly(data=first_three_pc , x=first_three_pc$PC1, y=first_three_pc$PC2, z=first_three_pc$PC3, type="scatter3d", mode="markers", color=clusters)
+p <- p %>% layout(
+    title = "First three Principal Componenes",
+    scene = list(
+      xaxis = list(title = "PC1"),
+      yaxis = list(title = "PC2"),
+      zaxis = list(title = "PC3")
+    ))
+p
+```
