@@ -426,7 +426,7 @@ plot_clusters_with_centers(data, km)
 In the following code snippet i am performing PCA on the original variables and I am getting the firsth three principal components as I would like to experiment with a 3D plotting as well. 
 
 
-```{r, results="hide"}
+```{r pca_usa, results="hide"}
 pca_result <- prcomp(data, scale = TRUE)
 first_three_pc <- as_tibble(pca_result$x[, 1:3])
 ```
@@ -454,3 +454,51 @@ p <- p %>% layout(
     ))
 p
 ```
+
+# 3. PCA of high-dimensional data (optional, for extra 5 points)
+
+In this exercise you will perform PCA on 40 observations of 1000 variables. This is very different from what you are used to: there are much more variables than observations! These are measurements of genes of tissues of healthy and diseased patients: the first 20 observations are coming from healthy and the others from diseased patients.
+
+```{r data_in3, message=FALSE, warning=FALSE, cache=TRUE, include=FALSE, paged.print=FALSE}
+# getting the data
+genes <- read_csv("https://www.statlearning.com/s/Ch10Ex11.csv", col_names = FALSE) %>%
+  t() %>% as_tibble()  # the original dataset is of dimension 1000x40 so we transpose it
+dim(genes)
+```
+
+### a. Perform PCA on this data with scaling features.
+
+In the following code snippet I am performing PCA on the dataeset with scaling features.
+
+```{r pca_genes, results="hide"}
+pca_result <- prcomp(genes, scale = TRUE)
+```
+
+### b. Visualize data points in the space of the first two principal components (look at the fviz_pca_ind function). What do you see in the figure?
+
+By using the fviz_pca_ind function i plotted the data points on the plain of the first two principal components. On the figure it is clear, that the healty and non-healthy observations are greatly separated among the first PC. 
+
+```{r pca_plot3, fig.width=4,fig.height=4, fig.align='center', echo = FALSE , results = 'asis', warning = FALSE, message = FALSE, cache=T}
+fviz_pca_ind(pca_result)
+```
+
+### c. Which individual features can matter the most in separating diseased from healthy?
+
+From the previous plot we can see that PC1 metters a lot regarding the separation of the dataset into two groups. By the fviz_contrib function we can visualize the top 5 loadings for the first PC. These are the ones, that are the most important variables in PC1 (having the largest weight in the linear combination of all original variables). We could have used the rotation matrix also, to find the most important variables, the fviz_contrib function gives the same. 
+
+```{r contrib, fig.width=4,fig.height=4, fig.align='center', echo = TRUE , results = 'asis', warning = FALSE, message = FALSE, cache=T}
+fviz_contrib(pca_result, "var", axes = 1, top=5)
+```
+
+We can see the two most important features (V502, V589) and we can use them, to plot the observations in the coordinate system defined by these two original features. On the plot it is clear, the these toowo variables are truly important as the data points are well separated on this plain already. However it is important to highlight that on the PC1-PC2 plain the seperation was more straightforward.
+
+```{r plotplot, fig.width=4,fig.height=4, fig.align='center', echo = FALSE , results = 'asis', warning = FALSE, message = FALSE, cache=T}
+genes$rownumber = 1:nrow(genes)
+genes <- genes %>%
+  mutate(healty = ifelse(rownumber <= 20, FALSE, TRUE))
+
+ggplot(genes, aes(x = V502, y = V589, color=healty)) +
+  geom_point()
+```
+
+PCA thus offers a way to summarize vast amounts of variables in a handful of dimensions. This can serve as a tool to pick interesting variables where, for example, visual inspection would be hopeless.
