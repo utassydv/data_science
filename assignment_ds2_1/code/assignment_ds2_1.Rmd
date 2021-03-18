@@ -243,7 +243,7 @@ h2o.varimp_plot(best_gbm)
 
 Use the Hitters dataset and predict log_salary just like we did it in class.
 
-```{r data2, include=FALSE, cache=TRUE, message=F, results=F}
+```{r data2, include=FALSE, cache=F, message=F, results=F}
 # goal: predict log salary
 data <- as_tibble(ISLR::Hitters) %>%
   drop_na(Salary) %>%
@@ -259,170 +259,76 @@ data_test <- splitted_data[[3]]
 
 #### a. Train two random forest models: one with sampling 2 variables randomly for each split and one with 10 (use the whole dataset and don’t do cross-validation). Inspect variable importance profiles. What do you see in terms of how important the first few variables are relative to each other?
 
-```{r rf_train, include=TRUE, cache=TRUE, message=F, results=F}
-##y <- "log_salary"
-#X <- setdiff(names(h2o_data), y)
-#
-#rf_params <- list(
-#  ntrees = c(10, 50, 100, 300),
-#  sample_rate = 1,
-#  max_depth = c(10, 20)
-#)
-#
-#rf_grid_2 <- h2o.grid(
-#  "randomForest", x = X, y = y,
-#  training_frame = data_train,
-#  grid_id = "rf_2",
-#  seed = my_seed,
-#  mtries = 2,
-#  hyper_params = rf_params
-#)
-#
-#rf_grid_10 <- h2o.grid(
-#  "randomForest", x = X, y = y,
-#  training_frame = data_train,
-#  grid_id = "rf_10",
-#  seed = my_seed,
-#  mtries = 10,
-#  hyper_params = rf_params
-#)
-#
-#h2o.getGrid(rf_grid@grid_id, "mae")
-#
-#best_rf_2 <- h2o.getModel(
-#  h2o.getGrid(rf_grid_2@grid_id, "mae")@model_ids[[1]])  
-#
-#best_rf_10 <- h2o.getModel(
-#  h2o.getGrid(rf_grid_10@grid_id, "mae")@model_ids[[1]]
-#)
-#
+```{r rf2_t, include=TRUE, cache=TRUE, message=F, results=F, warning=F}
+y <- "log_salary"
+X <- setdiff(names(h2o_data), y)
+
+rf_2 <- h2o.randomForest(
+  X, y,
+  training_frame = data_train,
+  model_id = "rfm_2",
+  seed = my_seed,
+  mtries = 2,
+  sample_rate = 1
+)
+
+rf_10 <- h2o.randomForest(
+  X, y,
+  training_frame = data_train,
+  model_id = "rfm_10",
+  seed = my_seed,
+  mtries = 10,
+  sample_rate = 1
+)
 ```
 
-```{r rf_grid, include=FALSE, cache=TRUE, message=F, results=F}
-#rf_2_performance_summary <- h2o.getGrid(rf_grid_2@grid_id, "mae")@summary_table %>%
-#  as_tibble() %>%
-#  mutate(across(c("mae", names(rf_params)), as.numeric))
-#
-#rf_2_performance_summary_plot <- ggplot(rf_performance_summary, aes(ntrees, mae, color = factor(mtries))) +
-#  geom_line() +
-#  facet_grid(max_depth ~ sample_rate, labeller = label_both) +
-#  theme(legend.position = "bottom") +
-#  labs(color = "mtry")
-#
-#rf_10_performance_summary <- h2o.getGrid(rf_grid_10@grid_id, "mae")@summary_table %>%
-#  as_tibble() %>%
-#  mutate(across(c("mae", names(rf_params)), as.numeric))
-#
-#rf_10_performance_summary_plot <- ggplot(rf_performance_summary, aes(ntrees, mae, color = factor(mtries))) +
-#  geom_line() +
-#  facet_grid(max_depth ~ sample_rate, labeller = label_both) +
-#  theme(legend.position = "bottom") +
-#  labs(color = "mtry")
+
+```{r varimp_plots, fig.width=8,fig.height=4, fig.align='center', warning = FALSE, message = FALSE}
+h2o.varimp_plot(rf_2)
+h2o.varimp_plot(rf_10)
 ```
 
-```{r psp, fig.width=8,fig.height=4, fig.align='center', echo = FALSE , results = 'asis', warning = FALSE, message = FALSE}
-#ggarrange(rf_2_performance_summary_plot, rf_10_performance_summary_plot, ncol=2)
-```
-
-```{r varimp_plots, fig.width=8,fig.height=4, fig.align='center', echo = FALSE , results = 'asis', warning = FALSE, message = FALSE}
-#ggarrange(h2o.varimp_plot(best_rf_2),h2o.varimp_plot(best_rf_10), ncol=2)
-```
-
+By showing the variable importance plots we can see, that the model with a lower number of sampling variables has a more balanced distribution between the most important variables, whereas the one with 10 sampling variables has a huge difference between variables regarding their importance. 
 
 #### b. One of them is more extreme in terms of how the most important and the next ones relate to each other. Give an intuitive explanation how mtry/mtries relates to relative importance of variables in random forest models.
 
-```{r , include=TRUE, cache=TRUE, message=F, results=F}
-
-```
+My intuition is that if mtries is lower (meaning the model has fewer options to chose while splitting), then less important variables have more chance to become more important. In that sense, each tree is being less perfect. If we are allowing the training algorithm to choose the splitting variable from wide a wide scale, then important variables at that point will always overtake less important ones.
 
 #### c. In the same vein, estimate two gbm models with varying rate of sampling for each tree (use 0.1 and 1 for the parameter bag.fraction/sample_rate). Hold all the other parameters fixed: grow 500 trees with maximum depths of 5, applying a learning rate of 0.1. Compare variable importance plots for the two models. Could you explain why is one variable importance profile more extreme than the other?
 
-```{r gbm_train, include=TRUE, cache=TRUE, message=F, results=F}
-#gbm_params <- list(
-#  ntrees = 500,
-#  learn_rate = 0.1, 
-#  max_depth = 5,
-#  nfolds = 0
-#)
-#
-#gbm_01 <- h2o.gbm(
-#  x = X, y = y,
-#  model_id = "gbm_01",
-#  training_frame = data_train,
-#  seed = my_seed,
-#  sample_rate = 0.1,
-#  hyper_params = gbm_params
-#)
-#
-#gbm_1 <- h2o.gbm(
-#  x = X, y = y,
-#  model_id = "gbm_1",
-#  training_frame = data_train,
-#  seed = my_seed,
-#  sample_rate = 1,
-#  hyper_params = gbm_params
-#)
-#
+```{r gbm2_train, include=TRUE, cache=TRUE, message=F, results=F}
+gbm_01 <- h2o.gbm(
+  x = X, y = y,
+  model_id = "gbm_01",
+  training_frame = data_train,
+  seed = my_seed,
+  sample_rate = 0.1,
+  ntrees = 500,
+  learn_rate = 0.1, 
+  max_depth = 5,
+  nfolds = 0
+)
 
-#gbm_grid_01 <- h2o.grid(
-#  "gbm", x = X, y = y,
-#  grid_id = "gbm_01",
-#  training_frame = data_train,
-#  seed = my_seed,
-#   sample_rate = 0.1,
-#  hyper_params = gbm_params
-#)
-#
-#gbm_grid_1 <- h2o.grid(
-#  "gbm", x = X, y = y,
-#  grid_id = "gbm_1",
-#  training_frame = data_train,
-#  seed = my_seed,
-#  sample_rate = 1,
-#  hyper_params = gbm_params
-#)
-#
-#
-#h2o.getGrid(rf_grid@grid_id, "mae")
-#
-#best_rf_2 <- h2o.getModel(
-#  h2o.getGrid(rf_grid_2@grid_id, "mae")@model_ids[[1]])  
-#
-#best_rf_10 <- h2o.getModel(
-#  h2o.getGrid(rf_grid_10@grid_id, "mae")@model_ids[[1]]
-#)
-
+gbm_1 <- h2o.gbm(
+  x = X, y = y,
+  model_id = "gbm_1",
+  training_frame = data_train,
+  seed = my_seed,
+  sample_rate = 1,
+  ntrees = 500,
+  learn_rate = 0.1, 
+  max_depth = 5,
+  nfolds = 0
+)
 ```
 
-```{r gbm_grid, include=FALSE, cache=TRUE, message=F, results=F}
-#rf_2_performance_summary <- h2o.getGrid(rf_grid_2@grid_id, "mae")@summary_table %>%
-#  as_tibble() %>%
-#  mutate(across(c("mae", names(rf_params)), as.numeric))
-#
-#rf_2_performance_summary_plot <- ggplot(rf_performance_summary, aes(ntrees, mae, color = factor(mtries))) +
-#  geom_line() +
-#  facet_grid(max_depth ~ sample_rate, labeller = label_both) +
-#  theme(legend.position = "bottom") +
-#  labs(color = "mtry")
-#
-#rf_10_performance_summary <- h2o.getGrid(rf_grid_10@grid_id, "mae")@summary_table %>%
-#  as_tibble() %>%
-#  mutate(across(c("mae", names(rf_params)), as.numeric))
-#
-#rf_10_performance_summary_plot <- ggplot(rf_performance_summary, aes(ntrees, mae, color = factor(mtries))) +
-#  geom_line() +
-#  facet_grid(max_depth ~ sample_rate, labeller = label_both) +
-#  theme(legend.position = "bottom") +
-#  labs(color = "mtry")
+
+```{r varimp_plots_gbm, fig.width=8,fig.height=4, fig.align='center', warning = FALSE, message = FALSE}
+h2o.varimp_plot(gbm_01)
+h2o.varimp_plot(gbm_1)
 ```
 
-```{r psp_gbm, fig.width=8,fig.height=4, fig.align='center', echo = FALSE , results = 'asis', warning = FALSE, message = FALSE}
-#ggarrange(rf_2_performance_summary_plot, rf_10_performance_summary_plot, ncol=2)
-```
-
-```{r varimp_plots_gbm, fig.width=8,fig.height=4, fig.align='center', echo = FALSE , results = 'asis', warning = FALSE, message = FALSE}
-#ggarrange(h2o.varimp_plot(gbm_01),h2o.varimp_plot(gbm_01), ncol=2)
-```
+We can see that the variable importance plot of the one with 0.1 sample rate is more balanced between the most important variables. I think the reason for that is that h2o using random sub-samples (without replacement) and when sample_rate = 0.1 it means that it using only random 10% of the data. This randomization gives an opportunity to less powerful variables to become relatively more important in the model.
 
 # 3. Stacking (10 points)
 In this problem you are going to predict whether patients actually show up for their medical appointments. The dataset was shared on Kaggle.
