@@ -9,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-Needed packages and initalizin h2o and the common seed:
+Needed packages and initalizing h2o and the common seed:
 ```{r includes, include=TRUE, results=F, warning=F, comment=F, message=F}
 library(tidyverse)
 library(ggplot2)
@@ -34,7 +34,7 @@ First of all, I am importing the data and doing some exploratory data analysis. 
 - We can see that Store ID is a numeric variable, but it should be a factor as it should not contain any ordering or “distance” information. 
 - The StoreID contains the same information as Store, therefore I dropped Store.
 - SpecialCH and SpecialMM variables are binary indicators, therefore I made them factor.
-- It worth to mention that WeekofPurchase is numeric and we might make it as a factor as well. However I decided to keep it as it is as it values are between 254 to 278 indicating that it has some time series feature in it (254 should be truly the furthers from 278).
+- WeekofPurchase is numeric and we might make it as a factor as well in order to achieve better results.
 
 
 
@@ -47,6 +47,7 @@ data <- mutate(data,
   store_id = factor(store_id),
   special_ch = factor(special_ch),
   special_mm = factor(special_mm),
+  weekof_purchase = factor(weekof_purchase),
   store = NULL
 )
 ```
@@ -220,7 +221,7 @@ In the table above we can see the predictive power of the four models. We can co
 
 #### d. Choose the best model and plot ROC curve for the best model on the test set. Calculate and interpret AUC.
 
-According to the previous table, the best model is a GBM model. Next, I calculated the AUC on the test set which is 0.8679 which is still high. On the other hand, it went down a bit which means, that the CV AUC metrics showed before are indeed very similar compared to this change. Also, we can plot the ROC curve as a visual representation of the AUC(area under the (ROC)curve).
+According to the previous table, the best model is a GBM model. Next, I calculated the AUC on the test set which is 0.8468 which is still high. On the other hand, it went down a bit which means, that the CV AUC metrics showed before are indeed very similar compared to this change. Also, we can plot the ROC curve as a visual representation of the AUC(area under the (ROC)curve).
 
 ```{r , include=TRUE, cache=TRUE, message=F, results=T}
 #h2o.auc(h2o.performance(best_gbm,data_test))
@@ -229,7 +230,7 @@ plot(h2o.performance(best_gbm, xval = TRUE), type = "roc")
 
 #### e. Inspect variable importance plots for the 3 models. Are similar variables found to be the most important for the 3 models?
 
-Up next we can see the variable importance plots of the models. We can see that they are very similar as the LoyalCH variable is outstandingly important everywhere. In the following places, there are some changes, but we can say that both models are very similar. 
+Up next we can see the variable importance plots of the models. We can see that they are very similar as the LoyalCH variable is outstandingly important everywhere. In the following places, there are some changes, but we can say that both models are very similar. One difference I want to highlight is that in the XGBOOST variable importance plot factor variables are not aggregated, which makes the difference compared to other plots. 
 
 
 ```{r , include=T, cache=TRUE, message=F, results=F}
@@ -333,52 +334,164 @@ We can see that the variable importance plot of the one with 0.1 sample rate is 
 # 3. Stacking (10 points)
 In this problem you are going to predict whether patients actually show up for their medical appointments. The dataset was shared on Kaggle.
 
+At first, I did the following basic steps:
+
+- Reading the data
+- Cleaning the data
+- Feature engineering
+
+
+```{r data3 , include=FALSE, cache=TRUE, message=F, results=F}
+data <- read_csv("../data/KaggleV2-May-2016.csv")
+
+# some data cleaning
+data <- select(data, -one_of(c("PatientId", "AppointmentID", "Neighbourhood"))) %>%
+  janitor::clean_names()
+
+# for binary prediction, the target variable must be a factor + generate new variables
+data <- mutate(
+  data,
+  no_show = factor(no_show, levels = c("Yes", "No")),
+  handcap = ifelse(handcap > 0, 1, 0),
+  across(c(gender, scholarship, hipertension, alcoholism, handcap), factor),
+  hours_since_scheduled = as.numeric(appointment_day - scheduled_day)
+)
+
+# clean up a little bit
+data <- filter(data, between(age, 0, 95), hours_since_scheduled >= 0) %>%
+  select(-one_of(c("scheduled_day", "appointment_day", "sms_received")))
+```
+
 #### a. Create train / validation / test sets, cutting the data into 5% - 45% - 50% parts.
 
-```{r , include=TRUE, cache=TRUE, message=F, results=F}
+```{r h2o3, include=T, cache=FALSE, message=F, results=F}
+h2o_data <- as.h2o(data)
 
+splitted_data <- h2o.splitFrame(h2o_data, ratios = c(0.05, 0.5), seed = my_seed)
+data_train <- splitted_data[[1]]
+data_valid <- splitted_data[[2]]
+data_test <- splitted_data[[3]]
+
+y <- "no_show"
+X <- setdiff(names(h2o_data), y)
 ```
 
 #### b. Train a benchmark model of your choice (such as random forest, gbm or glm) and evaluate it on the validation set.
 
-```{r , include=TRUE, cache=TRUE, message=F, results=F}
-
+```{r benchmark_train , include=TRUE, cache=TRUE, message=F, results=T}
+simple_gbm <- h2o.gbm(
+  x = X, y = y,
+  model_id = "simple_gbm",
+  training_frame = data_train,
+  nfolds = 5,
+  seed = my_seed
+)
+h2o.auc(h2o.performance(simple_gbm, data_valid))
 ```
 
 #### c. Build at least 3 models of different families using cross validation, keeping cross validated predictions. You might also try deeplearning.
 
-```{r , include=TRUE, cache=TRUE, message=F, results=F}
+```{r glm3 , include=TRUE, cache=TRUE, message=F, results=F}
+glm_model3 <- h2o.glm(
+  X, y,
+  training_frame = data_train,
+  model_id = "lasso3",
+  family = "binomial",
+  alpha = 1,
+  lambda_search = TRUE,
+  seed = my_seed,
+  nfolds = 5,
+  keep_cross_validation_predictions = TRUE  # this is necessary to perform later stacking
+)
+```
 
+```{r rf3 , include=TRUE, cache=TRUE, message=F, results=F}
+rf_model3 <- h2o.randomForest(
+  X, y,
+  training_frame = data_train,
+  model_id = "rf3",
+  ntrees = 200,
+  max_depth = 10,
+  seed = my_seed,
+  nfolds = 5,
+  keep_cross_validation_predictions = TRUE
+)
+```
+
+```{r dl3 , include=TRUE, cache=TRUE, message=F, results=F}
+deeplearning_model3 <- h2o.deeplearning(
+  X, y,
+  training_frame = data_train,
+  model_id = "deeplearning3",
+  hidden = c(32, 8),
+  seed = my_seed,
+  nfolds = 5,
+  keep_cross_validation_predictions = TRUE
+)
+```
+
+```{r gbm3 , include=TRUE, cache=TRUE, message=F, results=F}
+gbm_model3 <- h2o.gbm(
+  X, y,
+  training_frame = data_train,
+  model_id = "gbm3",
+  ntrees = 200,
+  max_depth = 5,
+  learn_rate = 0.1,
+  seed = my_seed,
+  nfolds = 5,
+  keep_cross_validation_predictions = TRUE
+)
 ```
 
 #### d. Evaluate validation set performance of each model.
 
-```{r , include=TRUE, cache=TRUE, message=F, results=F}
+```{r evaluate3, include=TRUE, cache=T, message=T, results=T}
+my_models <- list(glm_model3, rf_model3, deeplearning_model3, gbm_model3)
 
+aucs <- c()
+for (model in my_models){
+  aucs <- c(aucs, h2o.auc(h2o.performance(model, data_valid)))
+}
+
+aucs
 ```
 
 #### e. How large are the correlations of predicted scores of the validation set produced by the base learners?
 
-```{r , include=TRUE, cache=TRUE, message=F, results=F}
-
+```{r corplot, include=TRUE, cache=F, message=F, results=T}
+h2o.model_correlation_heatmap(my_models, data_valid)
 ```
 
 #### f. Create a stacked ensemble model from the base learners.
 
-```{r , include=TRUE, cache=TRUE, message=F, results=F}
+```{r ensemble_train, include=TRUE, cache=TRUE, message=F, results=F}
+ensemble_model <- h2o.stackedEnsemble(
+  X, y, 
+  training_frame = data_train,
+  base_models = my_models,
+  keep_levelone_frame = TRUE
+)
 
+ensemble_model_gbm <- h2o.stackedEnsemble(
+  X, y,
+  training_frame = data_train,
+  metalearner_algorithm = "gbm",
+  base_models = my_models
+)
 ```
 
 #### g. Evaluate ensembles on validation set. Did it improve prediction?
 
-```{r , include=TRUE, cache=TRUE, message=F, results=F}
-
+```{r , include=TRUE, cache=TRUE, message=T, results=T}
+h2o.auc(h2o.performance(ensemble_model, data_valid))
+h2o.auc(h2o.performance(ensemble_model_gbm, data_valid))
 ```
 
 #### h. Evaluate the best performing model on the test set. How does performance compare to that of the validation set?
 
-```{r , include=TRUE, cache=TRUE, message=F, results=F}
-
+```{r , include=TRUE, cache=TRUE, message=T, results=T}
+h2o.auc(h2o.performance(ensemble_model, newdata = data_test))
 ```
 
 # Appendix
