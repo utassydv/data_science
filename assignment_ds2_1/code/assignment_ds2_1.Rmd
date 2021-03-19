@@ -9,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-Needed packages and initalizing h2o and the common seed:
+Needed packages and initializing h2o and the common seed:
 ```{r includes, include=TRUE, results=F, warning=F, comment=F, message=F}
 library(tidyverse)
 library(ggplot2)
@@ -223,7 +223,7 @@ In the table above we can see the predictive power of the four models. We can co
 
 According to the previous table, the best model is a GBM model. Next, I calculated the AUC on the test set which is 0.8468 which is still high. On the other hand, it went down a bit which means, that the CV AUC metrics showed before are indeed very similar compared to this change. Also, we can plot the ROC curve as a visual representation of the AUC(area under the (ROC)curve).
 
-```{r , include=TRUE, cache=TRUE, message=F, results=T}
+```{r , include=TRUE, cache=TRUE, message=F, results=T, echo=F, fig.align='center'}
 #h2o.auc(h2o.performance(best_gbm,data_test))
 plot(h2o.performance(best_gbm, xval = TRUE), type = "roc")
 ```
@@ -232,10 +232,21 @@ plot(h2o.performance(best_gbm, xval = TRUE), type = "roc")
 
 Up next we can see the variable importance plots of the models. We can see that they are very similar as the LoyalCH variable is outstandingly important everywhere. In the following places, there are some changes, but we can say that both models are very similar. One difference I want to highlight is that in the XGBOOST variable importance plot factor variables are not aggregated, which makes the difference compared to other plots. 
 
+###### Random forest
 
-```{r , include=T, cache=TRUE, message=F, results=F}
+```{r , include=T, cache=TRUE, message=F, results=F, echo=F}
 h2o.varimp_plot(best_rf)
+```
+
+###### XGBOOST
+
+```{r, include=TRUE, cache=TRUE, message=F, results=F, echo=F}
 h2o.varimp_plot(best_xgboost)
+```
+
+###### GBM 
+
+```{r , include=TRUE, cache=TRUE, message=F, results=F, echo=F}
 h2o.varimp_plot(best_gbm)
 ```
 
@@ -260,6 +271,8 @@ data_test <- splitted_data[[3]]
 
 #### a. Train two random forest models: one with sampling 2 variables randomly for each split and one with 10 (use the whole dataset and don’t do cross-validation). Inspect variable importance profiles. What do you see in terms of how important the first few variables are relative to each other?
 
+In the following code snippet I am training the two random forest models as described in the task above.
+
 ```{r rf2_t, include=TRUE, cache=TRUE, message=F, results=F, warning=F}
 y <- "log_salary"
 X <- setdiff(names(h2o_data), y)
@@ -283,9 +296,13 @@ rf_10 <- h2o.randomForest(
 )
 ```
 
-
-```{r varimp_plots, fig.width=8,fig.height=4, fig.align='center', warning = FALSE, message = FALSE}
+###### mtries=2
+```{r varimp_plots, fig.width=8,fig.height=4, fig.align='center', warning = FALSE, message = FALSE, echo=F}
 h2o.varimp_plot(rf_2)
+```
+
+###### mtries=10
+```{r varimp_plots22, fig.width=8,fig.height=4, fig.align='center', warning = FALSE, message = FALSE, echo=F}
 h2o.varimp_plot(rf_10)
 ```
 
@@ -296,6 +313,8 @@ By showing the variable importance plots we can see, that the model with a lower
 My intuition is that if mtries is lower (meaning the model has fewer options to chose while splitting), then less important variables have more chance to become more important. In that sense, each tree is being less perfect. If we are allowing the training algorithm to choose the splitting variable from wide a wide scale, then important variables at that point will always overtake less important ones.
 
 #### c. In the same vein, estimate two gbm models with varying rate of sampling for each tree (use 0.1 and 1 for the parameter bag.fraction/sample_rate). Hold all the other parameters fixed: grow 500 trees with maximum depths of 5, applying a learning rate of 0.1. Compare variable importance plots for the two models. Could you explain why is one variable importance profile more extreme than the other?
+
+In the following code snippet I am training the two GBM models as described in the task above.
 
 ```{r gbm2_train, include=TRUE, cache=TRUE, message=F, results=F}
 gbm_01 <- h2o.gbm(
@@ -323,13 +342,17 @@ gbm_1 <- h2o.gbm(
 )
 ```
 
-
-```{r varimp_plots_gbm, fig.width=8,fig.height=4, fig.align='center', warning = FALSE, message = FALSE}
+###### sample_rate = 0.1
+```{r varimp_plots_gbm, fig.width=8,fig.height=4, fig.align='center', warning = FALSE, message = FALSE, echo=F}
 h2o.varimp_plot(gbm_01)
+```
+
+###### sample_rate = 1
+```{r varimp_plots_gbm22, fig.width=8,fig.height=4, fig.align='center', warning = FALSE, message = FALSE, echo=F}
 h2o.varimp_plot(gbm_1)
 ```
 
-We can see that the variable importance plot of the one with 0.1 sample rate is more balanced between the most important variables. I think the reason for that is that h2o using random sub-samples (without replacement) and when sample_rate = 0.1 it means that it using only random 10% of the data. This randomization gives an opportunity to less powerful variables to become relatively more important in the model.
+We can see that the variable importance plot of the one with 0.1 sample rate is more balanced between the most important variables. I think the reason for that is that h2o using random sub-samples (without replacement) and when sample_rate = 0.1 it means that it using only random 10% of the data. This randomization gives an opportunity to less powerful variables to become relatively more important in the model resulting in a more balanced distribution on the variable importance plot.
 
 # 3. Stacking (10 points)
 In this problem you are going to predict whether patients actually show up for their medical appointments. The dataset was shared on Kaggle.
@@ -364,6 +387,8 @@ data <- filter(data, between(age, 0, 95), hours_since_scheduled >= 0) %>%
 
 #### a. Create train / validation / test sets, cutting the data into 5% - 45% - 50% parts.
 
+In the following code snippet I am cutting the data as described above. Additionally I am defining the y and X variables.
+
 ```{r h2o3, include=T, cache=FALSE, message=F, results=F}
 h2o_data <- as.h2o(data)
 
@@ -378,7 +403,9 @@ X <- setdiff(names(h2o_data), y)
 
 #### b. Train a benchmark model of your choice (such as random forest, gbm or glm) and evaluate it on the validation set.
 
-```{r benchmark_train , include=TRUE, cache=TRUE, message=F, results=T}
+I decided to use a GBM model as a benchmark model, which has a cross-validated AUC of 0.5682 on the validation set.
+
+```{r benchmark_train , include=TRUE, cache=TRUE, message=F, results=F, echo=T, }
 simple_gbm <- h2o.gbm(
   x = X, y = y,
   model_id = "simple_gbm",
@@ -390,6 +417,15 @@ h2o.auc(h2o.performance(simple_gbm, data_valid))
 ```
 
 #### c. Build at least 3 models of different families using cross validation, keeping cross validated predictions. You might also try deeplearning.
+
+I made the decision to train the following models: 
+
+- Lasso
+- Random Forest
+- Deep Learning
+- Gradient Boosting Machine
+
+The training of these models are the following: 
 
 ```{r glm3 , include=TRUE, cache=TRUE, message=F, results=F}
 glm_model3 <- h2o.glm(
@@ -446,7 +482,9 @@ gbm_model3 <- h2o.gbm(
 
 #### d. Evaluate validation set performance of each model.
 
-```{r evaluate3, include=TRUE, cache=T, message=T, results=T}
+In the table below we can see the cross-validated AUC on the validation set for all of the models. (Note that the cross-validated AUC of for the baseline GBM model was 0.5682 on the validation set.).
+
+```{r eval3, echo = FALSE , results = "asis", warning = FALSE, message = FALSE, cache=F }
 my_models <- list(glm_model3, rf_model3, deeplearning_model3, gbm_model3)
 
 aucs <- c()
@@ -454,16 +492,24 @@ for (model in my_models){
   aucs <- c(aucs, h2o.auc(h2o.performance(model, data_valid)))
 }
 
-aucs
+aucs_df <- data.frame(aucs)
+colnames(aucs_df) <- 'AUC (validation)'
+rownames(aucs_df) <- c('Lasso', 'RF', 'DL', 'GBM')
+
+kbl(aucs_df, digits = 4)  %>% kable_styling(bootstrap_options = "striped", full_width = F, position = "center")
 ```
 
 #### e. How large are the correlations of predicted scores of the validation set produced by the base learners?
 
-```{r corplot, include=TRUE, cache=F, message=F, results=T}
+To visualize the correlation between the models we can plot heatmap showing the correlation matrix. It is interesting to see, that there is a great correlation between lasso, random forest and deep learning, however the GBM models seems to be different. (It had a poorer AUC performance as well)
+
+```{r corplot, include=TRUE, cache=T, message=F, results=T,echo=F, fig.align='center'}
 h2o.model_correlation_heatmap(my_models, data_valid)
 ```
 
 #### f. Create a stacked ensemble model from the base learners.
+
+Let's combine these models by training a meta learner model on top of them. First I am training with a default GLM meta learner, then I am using a GBM meta lerner in the following code snippet.
 
 ```{r ensemble_train, include=TRUE, cache=TRUE, message=F, results=F}
 ensemble_model <- h2o.stackedEnsemble(
@@ -483,26 +529,35 @@ ensemble_model_gbm <- h2o.stackedEnsemble(
 
 #### g. Evaluate ensembles on validation set. Did it improve prediction?
 
-```{r , include=TRUE, cache=TRUE, message=T, results=T}
+The AUC on the validation set turned out to be 0.5794 for the glm meta learner and 0.5424 for the GBM meta learner. The GLM meta learner under performed the other models, but the default glm meta learner improved slightly. 
+
+```{r , include=T, cache=TRUE, message=F, results=F}
 h2o.auc(h2o.performance(ensemble_model, data_valid))
 h2o.auc(h2o.performance(ensemble_model_gbm, data_valid))
 ```
 
 #### h. Evaluate the best performing model on the test set. How does performance compare to that of the validation set?
 
-```{r , include=TRUE, cache=TRUE, message=T, results=T}
+According to the results before, the glm meta learner turned out to be the best model. I have evaluated it on the test set and the AUC turned out to be 0.5907 which is better than on the validation set. It means that to model is robust enough.
+
+```{r , include=T, cache=TRUE, message=F, results=F}
 h2o.auc(h2o.performance(ensemble_model, newdata = data_test))
 ```
 
 # Appendix
-## 1
+## 1 exercise
 
 #### Summary plot for Random forest tuning
-```{r , include=TRUE, cache=TRUE, message=F, results=F}
+
+From the following plot we can see that the best RF models turned out to be the ones with small sample rate, with maximum depth 10. We can see that after 300 trees almost all the options reached the optimal state.
+
+```{r , include=TRUE, cache=TRUE, message=F, results=F, echo=F, fig.align='center'}
 rf_summary_plot
 ```
 
 #### Summary plot for GBM tuning
-```{r , include=TRUE, cache=TRUE, message=F, results=F}
+
+From the following plot we can see that with GBM models overfitting is really frequent, especially whey using high learning rate, and deep trees. Also we can see that with small learning rate, it is just the matter of time (number of trees) when we reach great performing models. 
+```{r , include=TRUE, cache=TRUE, message=F, results=F, echo=F, fig.align='center'}
 gbm_summary_plot
 ```
